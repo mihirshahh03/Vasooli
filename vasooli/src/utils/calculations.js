@@ -57,7 +57,7 @@ export function buildPaymentSummary(expenses, profiles) {
         byCategory[cat] = round2(byCategory[cat] + Number(e.total_amount))
         total = round2(total + Number(e.total_amount))
       })
-    return { profileId: p.id, name: p.name, byCategory, total }
+    return { profileId: p.id, name: p.display_name, byCategory, total }
   })
   return { rows, categories }
 }
@@ -89,7 +89,7 @@ export function buildSplitSummary(expenses, shares, profiles) {
       expenses.filter((e) => e.paid_by === p.id).reduce((sum, e) => sum + Number(e.total_amount), 0)
     )
     const net = round2(totalPaid - totalOwed)
-    return { profileId: p.id, name: p.name, byCategory, totalOwed, totalPaid, net }
+    return { profileId: p.id, name: p.display_name, byCategory, totalOwed, totalPaid, net }
   })
   return { rows, categories }
 }
