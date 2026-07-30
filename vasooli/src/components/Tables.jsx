@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { buildPaymentSummary, buildSplitSummary, applySettlements, simplifyDebts, buildUpiLink } from '../utils/calculations'
+import { buildPaymentSummary, buildSplitSummary, applySettlements, simplifyDebts } from '../utils/calculations'
 import Modal from './Modal'
 
 const fmt = (n) => `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
@@ -39,6 +39,14 @@ export default function Tables({ group, expenses, shares, settlements, profiles,
       amount: t.amount,
       created_by: myId,
     })
+    setSaving(false)
+    if (error) return alert(error.message)
+    onChanged()
+  }
+
+  async function undoSettlement(settlementId) {
+    setSaving(true)
+    const { error } = await supabase.from('settlements').delete().eq('id', settlementId)
     setSaving(false)
     if (error) return alert(error.message)
     onChanged()
@@ -129,23 +137,51 @@ export default function Tables({ group, expenses, shares, settlements, profiles,
           <p className="hint">Everyone's square.</p>
         ) : (
           <div className="stack-list">
-            {settlementsToMake.map((t, i) => {
-              const toProfile = profileById(t.toId)
-              const upiLink = toProfile?.upi_id
-                ? buildUpiLink({ upiId: toProfile.upi_id, payeeName: toProfile.display_name, amount: t.amount, note: group.name })
-                : null
+            {settlementsToMake.map((t, i) => (
+              <div key={i} className="settle-row">
+                <div>
+                  <strong>{t.from}</strong> → <strong>{t.to}</strong>
+                  <div className="expense-meta">{fmt(t.amount)}</div>
+                </div>
+                <button className="btn-primary" onClick={() => setPendingSettle(t)} disabled={saving}>
+                  Mark settled
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <h3>Pay now</h3>
+        <p className="hint">
+          Already know who to pay from the table above? Tap your app — it'll just open, no setup needed.
+        </p>
+        <div className="quick-pay-row">
+          <a className="quick-pay-btn" href="gpay://upi/pay">Google Pay</a>
+          <a className="quick-pay-btn" href="phonepe://pay">PhonePe</a>
+          <a className="quick-pay-btn" href="paytmmp://pay">Paytm</a>
+        </div>
+      </section>
+
+      <section>
+        <h3>Recently settled</h3>
+        {settlements.length === 0 ? (
+          <p className="hint">Nothing recorded yet.</p>
+        ) : (
+          <div className="stack-list">
+            {[...settlements].reverse().slice(0, 10).map((s) => {
+              const fromP = profileById(s.from_profile_id)
+              const toP = profileById(s.to_profile_id)
               return (
-                <div key={i} className="settle-row">
+                <div key={s.id} className="settle-row">
                   <div>
-                    <strong>{t.from}</strong> → <strong>{t.to}</strong>
-                    <div className="expense-meta">{fmt(t.amount)}</div>
+                    <strong>{fromP?.display_name || 'Someone'}</strong> → <strong>{toP?.display_name || 'someone'}</strong>
+                    <div className="expense-meta">{fmt(s.amount)}</div>
                   </div>
-                  <div className="settle-actions">
-                    {upiLink && <a className="btn-secondary" href={upiLink}>Pay via UPI</a>}
-                    <button className="btn-primary" onClick={() => setPendingSettle(t)} disabled={saving}>
-                      Mark settled
-                    </button>
-                  </div>
+                  <button className="btn-link" onClick={() => undoSettlement(s.id)} disabled={saving}>
+                    Undo
+                  </button>
                 </div>
               )
             })}

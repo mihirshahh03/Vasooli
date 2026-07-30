@@ -19,6 +19,27 @@ export default function Auth() {
     setNotice('')
   }
 
+  const [usernameTouched, setUsernameTouched] = useState(false)
+
+  function slugify(text) {
+    return text
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s_]/g, '')
+      .replace(/\s+/g, '_')
+      .slice(0, 20)
+  }
+
+  function handleDisplayNameChange(value) {
+    setDisplayName(value)
+    if (!usernameTouched) setUsername(slugify(value))
+  }
+
+  function handleUsernameChange(value) {
+    setUsernameTouched(true)
+    setUsername(value.replace(/\s/g, ''))
+  }
+
   async function handleSignup(e) {
     e.preventDefault()
     setError('')
@@ -144,21 +165,21 @@ export default function Auth() {
 
         {mode === 'signup' && (
           <form onSubmit={handleSignup} className="stack">
-            <label>Username</label>
+            <label>Your name</label>
+            <input
+              value={displayName}
+              onChange={(e) => handleDisplayNameChange(e.target.value)}
+              placeholder="Slayer"
+              autoComplete="name"
+            />
+            <label>Login name <span className="faint">(auto-filled — only edit if it's taken)</span></label>
             <input
               value={username}
-              onChange={(e) => setUsername(e.target.value.replace(/\s/g, ''))}
-              placeholder="slayerr"
+              onChange={(e) => handleUsernameChange(e.target.value)}
+              placeholder="slayer"
               autoCapitalize="none"
               autoCorrect="off"
               autoComplete="username"
-            />
-            <label>Display name</label>
-            <input
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Slayer"
-              autoComplete="name"
             />
             <label>Email <span className="faint">(optional — lets you reset your password yourself)</span></label>
             <input
