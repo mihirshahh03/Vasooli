@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient'
 
 export default function ProfileSettings({ profile, onClose, onSaved }) {
   const [displayName, setDisplayName] = useState(profile.display_name || '')
+  const [upiId, setUpiId] = useState(profile.upi_id || '')
   const [email, setEmail] = useState(profile.email?.endsWith('@users.vasooli.app') ? '' : profile.email || '')
   const [status, setStatus] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -16,7 +17,7 @@ export default function ProfileSettings({ profile, onClose, onSaved }) {
 
     const { error: profileError } = await supabase
       .from('profiles')
-      .update({ display_name: displayName.trim() || profile.display_name })
+      .update({ display_name: displayName.trim() || profile.display_name, upi_id: upiId.trim() || null })
       .eq('id', profile.id)
 
     let emailNotice = ''
@@ -42,6 +43,14 @@ export default function ProfileSettings({ profile, onClose, onSaved }) {
         <form onSubmit={handleSave} className="stack">
           <label>Display name</label>
           <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+
+          <label>UPI ID <span className="faint">(optional — lets friends pay you directly via Pay Now)</span></label>
+          <input
+            value={upiId}
+            onChange={(e) => setUpiId(e.target.value)}
+            placeholder="yourname@oksbi"
+            autoCapitalize="none"
+          />
 
           <label>
             Email <span className="faint">

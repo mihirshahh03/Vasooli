@@ -20,6 +20,7 @@ export default function Auth() {
   }
 
   const [usernameTouched, setUsernameTouched] = useState(false)
+  const [upiId, setUpiId] = useState('')
 
   function slugify(text) {
     return text
@@ -53,13 +54,18 @@ export default function Auth() {
     }
 
     setBusy(true)
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: email.trim() || usernameToEmail(uname),
       password,
       options: {
         data: { username: uname, display_name: displayName.trim() || uname },
       },
     })
+
+    if (!error && data.user && upiId.trim()) {
+      await supabase.from('profiles').update({ upi_id: upiId.trim() }).eq('id', data.user.id)
+    }
+
     setBusy(false)
     if (error) {
       setError(
@@ -188,6 +194,13 @@ export default function Auth() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               autoComplete="email"
+            />
+            <label>UPI ID <span className="faint">(optional — lets friends pay you directly)</span></label>
+            <input
+              value={upiId}
+              onChange={(e) => setUpiId(e.target.value)}
+              placeholder="yourname@oksbi"
+              autoCapitalize="none"
             />
             <label>Password</label>
             <input

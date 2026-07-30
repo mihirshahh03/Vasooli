@@ -12,6 +12,7 @@ function toCsv(rows) {
 export default function Tables({ group, expenses, shares, settlements, profiles, myId, onChanged }) {
   const [pendingSettle, setPendingSettle] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [payToId, setPayToId] = useState('')
 
   if (expenses.length === 0) {
     return <p className="hint">No expenses yet — the summary appears once you've logged something.</p>
@@ -25,6 +26,18 @@ export default function Tables({ group, expenses, shares, settlements, profiles,
 
   function profileById(id) {
     return profiles.find((p) => p.id === id)
+  }
+
+  const payableMembers = profiles.filter((p) => p.id !== myId && p.upi_id)
+  const payTo = profileById(payToId)
+  // If there's an actual amount you owe this specific person right now, prefill it automatically.
+  const matchingSettlement = settlementsToMake.find((t) => t.fromId === myId && t.toId === payToId)
+
+  function appLink(scheme) {
+    if (!payTo) return scheme
+    const params = new URLSearchParams({ pa: payTo.upi_id, pn: payTo.display_name, cu: 'INR' })
+    if (matchingSettlement) params.set('am', matchingSettlement.amount.toFixed(2))
+    return `${scheme}?${params.toString()}`
   }
 
   async function confirmSettle() {
@@ -154,14 +167,47 @@ export default function Tables({ group, expenses, shares, settlements, profiles,
 
       <section>
         <h3>Pay now</h3>
-        <p className="hint">
-          Already know who to pay from the table above? Tap your app — it'll just open, no setup needed.
-        </p>
-        <div className="quick-pay-row">
-          <a className="quick-pay-btn" href="gpay://upi/pay">Google Pay</a>
-          <a className="quick-pay-btn" href="phonepe://pay">PhonePe</a>
-          <a className="quick-pay-btn" href="paytmmp://pay">Paytm</a>
-        </div>
+        {payableMembers.length === 0 ? (
+          <p className="hint">
+            Nobody's added a UPI ID yet — ask the person you're paying to add one in Profile settings.
+          </p>
+        ) : (
+          <>
+            <label className="hint">Pay to</label>
+            <select value={payToId} onChange={(e) => setPayToId(e.target.value)}>
+              <option value="">Choose a person…</option>
+              {payableMembers.map((m) => (
+                <option key={m.id} value={m.id}>{m.display_name}</option>
+              ))}
+            </select>
+            {payTo && matchingSettlement && (
+              <p className="hint small">Amount will auto-fill: {fmt(matchingSettlement.amount)}</p>
+            )}
+            <div className="quick-pay-row">
+              <a
+                className={`quick-pay-btn ${!payTo ? 'disabled' : ''}`}
+                href={payTo ? appLink('gpay://upi/pay') : undefined}
+                onClick={(e) => !payTo && e.preventDefault()}
+              >
+                Google Pay
+              </a>
+              <a
+                className={`quick-pay-btn ${!payTo ? 'disabled' : ''}`}
+                href={payTo ? appLink('phonepe://pay') : undefined}
+                onClick={(e) => !payTo && e.preventDefault()}
+              >
+                PhonePe
+              </a>
+              <a
+                className={`quick-pay-btn ${!payTo ? 'disabled' : ''}`}
+                href={payTo ? appLink('paytmmp://pay') : undefined}
+                onClick={(e) => !payTo && e.preventDefault()}
+              >
+                Paytm
+              </a>
+            </div>
+          </>
+        )}
       </section>
 
       <section>
