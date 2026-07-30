@@ -4,11 +4,13 @@ import Auth from './pages/Auth'
 import ResetPassword from './pages/ResetPassword'
 import Groups from './pages/Groups'
 import GroupDetail from './pages/GroupDetail'
+import Profile from './pages/Profile'
 
 export default function App() {
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
   const [openGroup, setOpenGroup] = useState(null)
+  const [showProfile, setShowProfile] = useState(false)
   const [loading, setLoading] = useState(true)
   const [recovering, setRecovering] = useState(false)
 
@@ -28,6 +30,16 @@ export default function App() {
     })
     return () => sub.subscription.unsubscribe()
   }, [])
+
+  function loadProfile() {
+    if (!session) return
+    supabase
+      .from('profiles')
+      .select('id, username, display_name, email, upi_id')
+      .eq('id', session.user.id)
+      .single()
+      .then(({ data }) => setProfile(data))
+  }
 
   useEffect(() => {
     if (!session) return
@@ -49,36 +61,39 @@ export default function App() {
     await supabase.auth.signOut()
   }
 
-  function refreshProfile() {
-    if (!session) return
-    supabase
-      .from('profiles')
-      .select('id, username, display_name, email, upi_id')
-      .eq('id', session.user.id)
-      .single()
-      .then(({ data }) => setProfile(data))
-  }
-
   if (recovering) {
     return <ResetPassword onDone={() => setRecovering(false)} />
   }
   if (loading) return <div className="screen center"><p className="hint">Loading…</p></div>
   if (!session || !profile) return <Auth />
+
+  if (showProfile) {
+    return (
+      <Profile
+        profile={profile}
+        onBack={() => setShowProfile(false)}
+        onLogout={logout}
+        onProfileUpdated={loadProfile}
+      />
+    )
+  }
+
   if (openGroup) {
     return (
       <GroupDetail
         group={openGroup}
         profile={profile}
         onBack={() => setOpenGroup(null)}
+        onDeleted={() => setOpenGroup(null)}
       />
     )
   }
+
   return (
     <Groups
       profile={profile}
       onOpenGroup={setOpenGroup}
-      onLogout={logout}
-      onProfileUpdated={refreshProfile}
+      onOpenProfile={() => setShowProfile(true)}
     />
   )
 }

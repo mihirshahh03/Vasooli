@@ -1,7 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { computeEqualShares, computePerUnitShares, auditShares } from '../utils/calculations'
+import { CURRENCIES, convertToINR } from '../utils/currency'
 import Modal from './Modal'
+
+const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100
 
 export default function ExpenseForm({ group, members, profile, existingExpense, existingShares, onSaved, onCancel }) {
   const isEdit = !!existingExpense
@@ -10,6 +13,24 @@ export default function ExpenseForm({ group, members, profile, existingExpense, 
   const [paidBy, setPaidBy] = useState(existingExpense?.paid_by || profile.id)
   const [totalAmount, setTotalAmount] = useState(existingExpense?.total_amount?.toString() || '')
   const [splitType, setSplitType] = useState(existingExpense?.split_type || 'equal')
+
+  const [currency, setCurrency] = useState(existingExpense?.original_currency || 'INR')
+  const [rate, setRate] = useState(existingExpense?.exchange_rate || 1)
+  const [rateLoading, setRateLoading] = useState(false)
+  const [rateError, setRateError] = useState('')
+
+  useEffect(() => {
+    if (currency === 'INR') { setRate(1); setRateError(''); return }
+    setRateLoading(true)
+    setRateError('')
+    convertToINR(1, currency)
+      .then(({ rate }) => setRate(rate))
+      .catch(() => setRateError("Couldn't fetch today's rate. Try again in a moment."))
+      .finally(() => setRateLoading(false))
+  }, [currency])
+
+  // The amount typed is in `currency`; inrTotal is what actually drives every split calc.
+  const inrTotal = currency === 'INR' ? Number(totalAmount || 0) : round2(Number(totalAmount || 0) * rate)
 
   const initialIncluded = existingShares
     ? Object.fromEntries(members.map((m) => [m.id, existingShares.some((s) => s.profile_id === m.id)]))
@@ -36,7 +57,7 @@ export default function ExpenseForm({ group, members, profile, existingExpense, 
     if (splitType === 'equal') {
       const ids = members.filter((m) => included[m.id]).map((m) => m.id)
       if (!ids.length) return {}
-      return computeEqualShares(Number(totalAmount || 0), ids)
+      return computeEqualShares(inrTotal, ids)
     }
     if (splitType === 'custom') {
       const shares = {}
@@ -49,7 +70,7 @@ export default function ExpenseForm({ group, members, profile, existingExpense, 
   }
 
   function checkTotals() {
-    const result = auditShares(computeShares(), Number(totalAmount || 0))
+    const result = auditShares(computeShares(), inrTotal)
     setAudit(result)
     return result
   }
@@ -58,20 +79,22 @@ export default function ExpenseForm({ group, members, profile, existingExpense, 
     const shares = computeShares()
     setSaving(true)
 
+    const payload = {
+      description: description.trim(),
+      category: category.trim() || description.trim(),
+      paid_by: paidBy,
+      total_amount: inrTotal,
+      split_type: splitType,
+      meta: { units, unitPrice, included },
+      original_currency: currency === 'INR' ? null : currency,
+      original_amount: currency === 'INR' ? null : Number(totalAmount),
+      exchange_rate: currency === 'INR' ? null : rate,
+    }
+
     let expenseId = existingExpense?.id
 
     if (isEdit) {
-      const { error } = await supabase
-        .from('expenses')
-        .update({
-          description: description.trim(),
-          category: category.trim() || description.trim(),
-          paid_by: paidBy,
-          total_amount: Number(totalAmount),
-          split_type: splitType,
-          meta: { units, unitPrice, included },
-        })
-        .eq('id', expenseId)
+      const { error } = await supabase.from('expenses').update(payload).eq('id', expenseId)
       if (error) {
         setSaving(false)
         return alert(error.message)
@@ -80,16 +103,7 @@ export default function ExpenseForm({ group, members, profile, existingExpense, 
     } else {
       const { data: expense, error } = await supabase
         .from('expenses')
-        .insert({
-          group_id: group.id,
-          description: description.trim(),
-          category: category.trim() || description.trim(),
-          paid_by: paidBy,
-          total_amount: Number(totalAmount),
-          split_type: splitType,
-          created_by: profile.id,
-          meta: { units, unitPrice, included },
-        })
+        .insert({ ...payload, group_id: group.id, created_by: profile.id })
         .select()
         .single()
       if (error) {
@@ -145,15 +159,46 @@ export default function ExpenseForm({ group, members, profile, existingExpense, 
         ))}
       </select>
 
-      <label>Total (₹)</label>
-      <input
-        type="number"
-        step="0.01"
-        inputMode="decimal"
-        value={totalAmount}
-        onChange={(e) => setTotalAmount(e.target.value)}
-        required
-      />
+      {group.is_international ? (
+        <>
+          <label>Amount</label>
+          <div className="amount-currency-row">
+            <input
+              type="number"
+              step="0.01"
+              inputMode="decimal"
+              value={totalAmount}
+              onChange={(e) => setTotalAmount(e.target.value)}
+              required
+            />
+            <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+              <option value="INR">INR</option>
+              {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          {currency !== 'INR' && (
+            rateLoading ? (
+              <p className="hint small">Fetching today's rate…</p>
+            ) : rateError ? (
+              <p className="warning">{rateError}</p>
+            ) : (
+              <p className="hint small">≈ {fmtInr(inrTotal)} at today's rate (1 {currency} = ₹{rate.toFixed(2)})</p>
+            )
+          )}
+        </>
+      ) : (
+        <>
+          <label>Total (₹)</label>
+          <input
+            type="number"
+            step="0.01"
+            inputMode="decimal"
+            value={totalAmount}
+            onChange={(e) => setTotalAmount(e.target.value)}
+            required
+          />
+        </>
+      )}
 
       <label>How to split</label>
       <div className="tab-row tight">
@@ -229,7 +274,7 @@ export default function ExpenseForm({ group, members, profile, existingExpense, 
         audit.ok
           ? <p className="success">Shares add up to the total exactly.</p>
           : <p className="warning">
-              Shares add up to ₹{audit.computedTotal}, but the total says ₹{totalAmount} — off by ₹{Math.abs(audit.diff)}.
+              Shares add up to {fmtInr(audit.computedTotal)}, but the total says {fmtInr(inrTotal)} — off by {fmtInr(Math.abs(audit.diff))}.
             </p>
       )}
 
@@ -243,7 +288,7 @@ export default function ExpenseForm({ group, members, profile, existingExpense, 
       {pendingMismatch && (
         <Modal
           title="Numbers don't quite match"
-          body={`The shares add up to ₹${pendingMismatch.computedTotal}, but you entered ₹${totalAmount} (off by ₹${Math.abs(pendingMismatch.diff)}). Save anyway using the total you entered?`}
+          body={`The shares add up to ${fmtInr(pendingMismatch.computedTotal)}, but the total is ${fmtInr(inrTotal)} (off by ${fmtInr(Math.abs(pendingMismatch.diff))}). Save anyway using the total?`}
           confirmLabel="Save anyway"
           onConfirm={() => { setPendingMismatch(null); reallySave() }}
           onCancel={() => setPendingMismatch(null)}
@@ -251,4 +296,8 @@ export default function ExpenseForm({ group, members, profile, existingExpense, 
       )}
     </form>
   )
+}
+
+function fmtInr(n) {
+  return `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 }

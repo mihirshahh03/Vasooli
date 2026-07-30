@@ -40,6 +40,11 @@ export default function Tables({ group, expenses, shares, settlements, profiles,
     return `${scheme}?${params.toString()}`
   }
 
+  function nudgeLink(transaction) {
+    const message = `Hey! Just a nudge from Vasooli — you owe ${fmt(transaction.amount)} for "${group.name}". No rush, just a reminder 🙂`
+    return `https://wa.me/?text=${encodeURIComponent(message)}`
+  }
+
   async function confirmSettle() {
     const t = pendingSettle
     setPendingSettle(null)
@@ -156,9 +161,16 @@ export default function Tables({ group, expenses, shares, settlements, profiles,
                   <strong>{t.from}</strong> → <strong>{t.to}</strong>
                   <div className="expense-meta">{fmt(t.amount)}</div>
                 </div>
-                <button className="btn-primary" onClick={() => setPendingSettle(t)} disabled={saving}>
-                  Mark settled
-                </button>
+                <div className="settle-actions">
+                  {t.toId === myId && (
+                    <a className="btn-secondary" href={nudgeLink(t)} target="_blank" rel="noopener noreferrer">
+                      Nudge
+                    </a>
+                  )}
+                  <button className="btn-primary" onClick={() => setPendingSettle(t)} disabled={saving}>
+                    Mark settled
+                  </button>
+                </div>
               </div>
             ))}
           </div>

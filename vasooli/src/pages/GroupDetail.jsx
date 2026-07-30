@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
 import { supabase } from '../supabaseClient'
 import Members from '../components/Members'
 import ExpenseForm from '../components/ExpenseForm'
@@ -6,8 +7,9 @@ import ExpenseList from '../components/ExpenseList'
 import Tables from '../components/Tables'
 import Activity from '../components/Activity'
 import BottomNav from '../components/BottomNav'
+import GroupMenu from '../components/GroupMenu'
 
-export default function GroupDetail({ group, profile, onBack }) {
+export default function GroupDetail({ group, profile, onBack, onDeleted }) {
   const [members, setMembers] = useState([])
   const [expenses, setExpenses] = useState([])
   const [shares, setShares] = useState([])
@@ -17,9 +19,13 @@ export default function GroupDetail({ group, profile, onBack }) {
   const [editingExpense, setEditingExpense] = useState(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('expenses')
+  const [groupInfo, setGroupInfo] = useState(group)
 
   async function loadAll() {
     setLoading(true)
+
+    const { data: freshGroup } = await supabase.from('groups').select('*').eq('id', group.id).single()
+    if (freshGroup) setGroupInfo(freshGroup)
 
     const { data: memberRows } = await supabase
       .from('group_members')
@@ -69,11 +75,28 @@ export default function GroupDetail({ group, profile, onBack }) {
   const myRole = members.find((m) => m.id === profile.id)?.role
   const sharesForExpense = (expenseId) => shares.filter((s) => s.expense_id === expenseId)
 
+  function formatDates() {
+    if (!groupInfo.start_date) return null
+    const opts = { day: 'numeric', month: 'short' }
+    const start = new Date(groupInfo.start_date).toLocaleDateString('en-IN', opts)
+    const end = groupInfo.end_date ? new Date(groupInfo.end_date).toLocaleDateString('en-IN', opts) : null
+    return end ? `${start} – ${end}` : start
+  }
+
   return (
     <div className="screen with-bottom-nav">
       <header className="topbar">
-        <button className="btn-link" onClick={onBack}>← Groups</button>
-        <span className="hello">{group.emoji} {group.name}</span>
+        <button className="icon-btn" onClick={onBack}><ArrowLeft size={20} /></button>
+        <span className="hello group-header-title">
+          <span>{groupInfo.emoji} {groupInfo.name}</span>
+          {formatDates() && <span className="group-dates">{formatDates()}</span>}
+        </span>
+        <GroupMenu
+          group={groupInfo}
+          isAdmin={myRole === 'admin'}
+          onArchiveToggled={loadAll}
+          onDeleted={onDeleted}
+        />
       </header>
 
       <div className="content">
@@ -91,7 +114,7 @@ export default function GroupDetail({ group, profile, onBack }) {
                 <p className="hint">Add at least one member before logging expenses.</p>
               ) : (
                 <ExpenseForm
-                  group={group}
+                  group={groupInfo}
                   members={members}
                   profile={profile}
                   existingExpense={editingExpense}
@@ -129,7 +152,7 @@ export default function GroupDetail({ group, profile, onBack }) {
             </div>
           ) : (
             <Tables
-              group={group}
+              group={groupInfo}
               expenses={expenses}
               shares={shares}
               settlements={settlements}

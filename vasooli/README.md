@@ -1,31 +1,42 @@
 # Vasooli
 
 Group expense splitting for real trips — including the messy splits Splitwise
-handles badly: subgroup-only meals, per-unit consumption, and a built-in check
-that flags when itemised shares don't add up to the total. Now also tracks
-who's actually settled up, lets you edit expenses, and has an activity feed.
+handles badly, plus multi-currency, comments, and group management.
 
 ---
 
-## Updating an existing deployment (you already have this live)
+## Updating from v2 → v3 (you already have this live)
 
-**1. Run the migration (does NOT touch existing data)**
+**1. Run the new migration** — Supabase → SQL Editor → paste all of
+`migration_v3.sql` → Run. Additive only, doesn't touch existing data.
 
-Supabase → SQL Editor → New query → paste all of `migration_v2.sql` → Run.
-This only *adds* things (new columns, new tables, new functions) — it won't
-drop or wipe your existing signups, groups, or expenses.
+**2. Push the updated code to GitHub** — same as before, into the correct
+`vasooli` folder (the one Vercel's Root Directory points to). This version
+adds a new dependency (`lucide-react`), so make sure `package.json` and
+`package-lock.json` are both part of the upload — Vercel reinstalls
+dependencies automatically on the next deploy, no extra step needed from you.
 
-**2. Allow the password-reset redirect**
+That's it — same env vars, same Vercel project, no settings changes.
 
-Supabase → Authentication → **URL Configuration** → add your live Vercel URL
-(e.g. `https://vasoolitripsplit.vercel.app`) to **Redirect URLs**. Without
-this, clicking a password-reset email link will fail with an error.
+## What's new in v3
 
-**3. Push the updated code to GitHub** (same as before — drag the folder into
-the same nested path, GitHub will show the changed files in the commit).
-Vercel redeploys automatically.
-
-That's it — no changes needed to your existing environment variables.
+- **International groups & currency conversion** — mark a group international
+  at creation; expenses can then be logged in USD/EUR/etc. and are converted
+  to ₹ automatically (via the free Frankfurter API) for all split/settle math,
+  while still showing the original amount for reference
+- **Delete a group** — admin-only, requires typing the group's name to
+  confirm, permanently removes everything in it
+- **Comments on expenses** — tap any expense to open a thread and ask
+  "wait, why is this ₹800?" right there
+- **WhatsApp nudge** — on a Settle Up row where you're owed money, one tap
+  opens WhatsApp with a pre-written reminder (you pick who to send it to,
+  no phone numbers stored anywhere)
+- **Trip dates** — optional start/end date on a group, shown on its card
+- **Full Profile page** — change display name, username, email, password,
+  and UPI ID all in one place, reachable from the top-right of the groups list
+- **Redesigned UI** — more whitespace, refined type hierarchy, minimal line
+  icons (lucide-react) instead of emoji-as-UI, group emoji tucked into a
+  small popover instead of an always-visible row
 
 ---
 

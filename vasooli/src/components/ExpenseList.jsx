@@ -1,11 +1,13 @@
 import { useRef, useState } from 'react'
+import { Pencil } from 'lucide-react'
 import { supabase } from '../supabaseClient'
 import Modal from './Modal'
+import ExpenseDetail from './ExpenseDetail'
 
 const fmt = (n) => `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 const SPLIT_LABEL = { equal: 'Equal', custom: 'Custom', per_unit: 'Per unit' }
 
-function SwipeRow({ expense, canEdit, nameOf, onEdit, onRequestDelete }) {
+function SwipeRow({ expense, canEdit, nameOf, onEdit, onOpen, onRequestDelete }) {
   const startX = useRef(0)
   const [dx, setDx] = useState(0)
   const [swiping, setSwiping] = useState(false)
@@ -32,16 +34,19 @@ function SwipeRow({ expense, canEdit, nameOf, onEdit, onRequestDelete }) {
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
       >
-        <div>
+        <div className="expense-row-tap" onClick={() => onOpen(expense)}>
           <div className="expense-title">{expense.description}</div>
           <div className="expense-meta">
             {nameOf(expense.paid_by)} paid · {SPLIT_LABEL[expense.split_type]}
+            {expense.original_currency && <> · {expense.original_amount} {expense.original_currency}</>}
           </div>
         </div>
         <div className="expense-right">
           <span className="expense-amount">{fmt(expense.total_amount)}</span>
           {canEdit && (
-            <button className="btn-x" onClick={() => onEdit(expense)} title="Edit" type="button">✎</button>
+            <button className="icon-btn" onClick={() => onEdit(expense)} title="Edit" type="button">
+              <Pencil size={16} />
+            </button>
           )}
         </div>
       </div>
@@ -51,6 +56,7 @@ function SwipeRow({ expense, canEdit, nameOf, onEdit, onRequestDelete }) {
 
 export default function ExpenseList({ expenses, members, profile, myRole, onEdit, onChanged }) {
   const [pendingDelete, setPendingDelete] = useState(null)
+  const [openExpense, setOpenExpense] = useState(null)
   const nameOf = (id) => members.find((m) => m.id === id)?.display_name || 'Someone'
 
   async function confirmDelete() {
@@ -67,7 +73,7 @@ export default function ExpenseList({ expenses, members, profile, myRole, onEdit
 
   return (
     <div className="stack-list">
-      <p className="hint small">Swipe left on an expense to delete it. Tap ✎ to edit (if you added it, or you're admin).</p>
+      <p className="hint small">Tap an expense to comment. Swipe left to delete. ✎ to edit.</p>
       {expenses.map((e) => (
         <SwipeRow
           key={e.id}
@@ -75,6 +81,7 @@ export default function ExpenseList({ expenses, members, profile, myRole, onEdit
           canEdit={e.created_by === profile.id || myRole === 'admin'}
           nameOf={nameOf}
           onEdit={onEdit}
+          onOpen={setOpenExpense}
           onRequestDelete={setPendingDelete}
         />
       ))}
@@ -87,6 +94,15 @@ export default function ExpenseList({ expenses, members, profile, myRole, onEdit
           danger
           onConfirm={confirmDelete}
           onCancel={() => setPendingDelete(null)}
+        />
+      )}
+
+      {openExpense && (
+        <ExpenseDetail
+          expense={openExpense}
+          members={members}
+          profile={profile}
+          onClose={() => setOpenExpense(null)}
         />
       )}
     </div>

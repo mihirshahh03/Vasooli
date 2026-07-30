@@ -1,23 +1,35 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { User, ChevronRight } from 'lucide-react'
 import { supabase } from '../supabaseClient'
-import ProfileSettings from '../components/ProfileSettings'
 
 const EMOJI_CHOICES = ['🧾', '🏖️', '🏔️', '🎉', '🍷', '🏕️', '🚗', '🏠', '✈️', '🍔']
 
-export default function Groups({ profile, onOpenGroup, onLogout, onProfileUpdated }) {
+export default function Groups({ profile, onOpenGroup, onOpenProfile }) {
   const [groups, setGroups] = useState([])
   const [newName, setNewName] = useState('')
   const [newEmoji, setNewEmoji] = useState(EMOJI_CHOICES[0])
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [isInternational, setIsInternational] = useState(false)
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
   const [showArchived, setShowArchived] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
+  const pickerRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) setShowEmojiPicker(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   async function loadGroups() {
     const { data, error } = await supabase
       .from('groups')
-      .select('id, name, emoji, archived_at, created_at')
+      .select('id, name, emoji, archived_at, is_international, start_date, end_date, created_at')
       .order('created_at', { ascending: false })
     if (error) setError(error.message)
     else setGroups(data || [])
@@ -31,63 +43,94 @@ export default function Groups({ profile, onOpenGroup, onLogout, onProfileUpdate
     if (!newName.trim()) return
     setCreating(true)
     setError('')
-    const { error } = await supabase
-      .from('groups')
-      .insert({ name: newName.trim(), emoji: newEmoji, created_by: profile.id })
+    const { error } = await supabase.from('groups').insert({
+      name: newName.trim(),
+      emoji: newEmoji,
+      created_by: profile.id,
+      is_international: isInternational,
+      start_date: startDate || null,
+      end_date: endDate || null,
+    })
     setCreating(false)
     if (error) return setError(error.message)
     setNewName('')
-    loadGroups()
-  }
-
-  async function toggleArchive(group, e) {
-    e.stopPropagation()
-    const { error } = await supabase
-      .from('groups')
-      .update({ archived_at: group.archived_at ? null : new Date().toISOString() })
-      .eq('id', group.id)
-    if (error) return alert(error.message)
+    setStartDate('')
+    setEndDate('')
     loadGroups()
   }
 
   const visibleGroups = groups.filter((g) => (showArchived ? true : !g.archived_at))
 
+  function formatDates(g) {
+    if (!g.start_date) return null
+    const opts = { day: 'numeric', month: 'short' }
+    const start = new Date(g.start_date).toLocaleDateString('en-IN', opts)
+    const end = g.end_date ? new Date(g.end_date).toLocaleDateString('en-IN', opts) : null
+    return end ? `${start} – ${end}` : start
+  }
+
   return (
     <div className="screen">
       <header className="topbar">
         <span className="brand-small">Vasooli</span>
-        <div className="topbar-right">
-          <button className="btn-link" onClick={() => setShowSettings(true)}>@{profile.username}</button>
-          <button className="btn-link" onClick={onLogout}>Log out</button>
-        </div>
+        <button className="icon-btn" onClick={onOpenProfile} title="Profile">
+          <User size={20} />
+        </button>
       </header>
 
       <div className="content">
         <h2>Your groups</h2>
 
-        <form onSubmit={createGroup} className="stack">
-          <div className="emoji-picker">
-            {EMOJI_CHOICES.map((em) => (
+        <form onSubmit={createGroup} className="create-group-form">
+          <div className="create-group-row">
+            <div className="emoji-popover-wrap" ref={pickerRef}>
               <button
                 type="button"
-                key={em}
-                className={`emoji-choice ${newEmoji === em ? 'active' : ''}`}
-                onClick={() => setNewEmoji(em)}
+                className="emoji-trigger"
+                onClick={() => setShowEmojiPicker((s) => !s)}
               >
-                {em}
+                {newEmoji}
               </button>
-            ))}
-          </div>
-          <div className="inline-form">
+              {showEmojiPicker && (
+                <div className="emoji-popover">
+                  {EMOJI_CHOICES.map((em) => (
+                    <button
+                      type="button"
+                      key={em}
+                      className="emoji-choice"
+                      onClick={() => { setNewEmoji(em); setShowEmojiPicker(false) }}
+                    >
+                      {em}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <input
               placeholder="New group, e.g. Nashik Trip"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
             />
-            <button type="submit" className="btn-primary" disabled={creating}>
-              {creating ? '…' : 'Create'}
+          </div>
+
+          <div className="trip-type-toggle">
+            <button type="button" className={!isInternational ? 'active' : ''} onClick={() => setIsInternational(false)}>
+              Domestic
+            </button>
+            <button type="button" className={isInternational ? 'active' : ''} onClick={() => setIsInternational(true)}>
+              International
             </button>
           </div>
+
+          <div className="date-row">
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <span className="faint">to</span>
+            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          </div>
+
+          <button type="submit" className="btn-primary full" disabled={creating}>
+            {creating ? 'Creating…' : 'Create group'}
+          </button>
         </form>
 
         {error && <p className="error">{error}</p>}
@@ -99,7 +142,7 @@ export default function Groups({ profile, onOpenGroup, onLogout, onProfileUpdate
           </div>
         ) : visibleGroups.length === 0 ? (
           <p className="hint mt">
-            {showArchived ? 'No archived groups.' : "No groups yet. Create one above, then add your friends by username."}
+            {showArchived ? 'No archived groups.' : 'No groups yet. Create one above, then add your friends by username.'}
           </p>
         ) : (
           <div className="stack-list">
@@ -107,15 +150,14 @@ export default function Groups({ profile, onOpenGroup, onLogout, onProfileUpdate
               <button key={g.id} className="row-card" onClick={() => onOpenGroup(g)}>
                 <span className="row-card-left">
                   <span className="group-emoji">{g.emoji || '🧾'}</span>
-                  <span>{g.name}</span>
-                  {g.archived_at && <span className="chip-tag">archived</span>}
-                </span>
-                <span className="row-card-right">
-                  <span className="btn-link small-link" onClick={(e) => toggleArchive(g, e)}>
-                    {g.archived_at ? 'Unarchive' : 'Archive'}
+                  <span className="group-card-text">
+                    <span>{g.name}</span>
+                    {formatDates(g) && <span className="group-dates">{formatDates(g)}</span>}
                   </span>
-                  <span className="arrow">→</span>
+                  {g.archived_at && <span className="chip-tag">archived</span>}
+                  {g.is_international && <span className="chip-tag">intl</span>}
                 </span>
+                <ChevronRight size={18} className="arrow" />
               </button>
             ))}
           </div>
@@ -125,14 +167,6 @@ export default function Groups({ profile, onOpenGroup, onLogout, onProfileUpdate
           {showArchived ? 'Hide archived groups' : 'Show archived groups'}
         </button>
       </div>
-
-      {showSettings && (
-        <ProfileSettings
-          profile={profile}
-          onClose={() => setShowSettings(false)}
-          onSaved={() => { onProfileUpdated?.(); }}
-        />
-      )}
     </div>
   )
 }
