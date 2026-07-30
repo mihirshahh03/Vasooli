@@ -1,27 +1,36 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { computeEqualShares, computePerUnitShares, auditShares } from '../utils/calculations'
+import Modal from './Modal'
 
-export default function ExpenseForm({ group, members, profile, onSaved, onCancel }) {
-  const [description, setDescription] = useState('')
-  const [category, setCategory] = useState('')
-  const [paidBy, setPaidBy] = useState(profile.id)
-  const [totalAmount, setTotalAmount] = useState('')
-  const [splitType, setSplitType] = useState('equal')
+export default function ExpenseForm({ group, members, profile, existingExpense, existingShares, onSaved, onCancel }) {
+  const isEdit = !!existingExpense
+  const [description, setDescription] = useState(existingExpense?.description || '')
+  const [category, setCategory] = useState(existingExpense?.category || '')
+  const [paidBy, setPaidBy] = useState(existingExpense?.paid_by || profile.id)
+  const [totalAmount, setTotalAmount] = useState(existingExpense?.total_amount?.toString() || '')
+  const [splitType, setSplitType] = useState(existingExpense?.split_type || 'equal')
 
-  const [included, setIncluded] = useState(() =>
-    Object.fromEntries(members.map((m) => [m.id, true]))
-  )
-  const [customAmounts, setCustomAmounts] = useState({})
-  const [unitPrice, setUnitPrice] = useState('')
-  const [units, setUnits] = useState(() => Object.fromEntries(members.map((m) => [m.id, 0])))
+  const initialIncluded = existingShares
+    ? Object.fromEntries(members.map((m) => [m.id, existingShares.some((s) => s.profile_id === m.id)]))
+    : Object.fromEntries(members.map((m) => [m.id, true]))
+  const [included, setIncluded] = useState(initialIncluded)
+
+  const initialCustom = existingShares
+    ? Object.fromEntries(existingShares.map((s) => [s.profile_id, String(s.share_amount)]))
+    : {}
+  const [customAmounts, setCustomAmounts] = useState(initialCustom)
+
+  const meta = existingExpense?.meta || {}
+  const [unitPrice, setUnitPrice] = useState(meta.unitPrice || '')
+  const [units, setUnits] = useState(meta.units || Object.fromEntries(members.map((m) => [m.id, 0])))
 
   const [audit, setAudit] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [pendingMismatch, setPendingMismatch] = useState(null)
 
   const toggle = (id) => setIncluded((p) => ({ ...p, [id]: !p[id] }))
-  const setAll = (value) =>
-    setIncluded(Object.fromEntries(members.map((m) => [m.id, value])))
+  const setAll = (value) => setIncluded(Object.fromEntries(members.map((m) => [m.id, value])))
 
   function computeShares() {
     if (splitType === 'equal') {
@@ -45,6 +54,62 @@ export default function ExpenseForm({ group, members, profile, onSaved, onCancel
     return result
   }
 
+  async function reallySave() {
+    const shares = computeShares()
+    setSaving(true)
+
+    let expenseId = existingExpense?.id
+
+    if (isEdit) {
+      const { error } = await supabase
+        .from('expenses')
+        .update({
+          description: description.trim(),
+          category: category.trim() || description.trim(),
+          paid_by: paidBy,
+          total_amount: Number(totalAmount),
+          split_type: splitType,
+          meta: { units, unitPrice, included },
+        })
+        .eq('id', expenseId)
+      if (error) {
+        setSaving(false)
+        return alert(error.message)
+      }
+      await supabase.from('expense_shares').delete().eq('expense_id', expenseId)
+    } else {
+      const { data: expense, error } = await supabase
+        .from('expenses')
+        .insert({
+          group_id: group.id,
+          description: description.trim(),
+          category: category.trim() || description.trim(),
+          paid_by: paidBy,
+          total_amount: Number(totalAmount),
+          split_type: splitType,
+          created_by: profile.id,
+          meta: { units, unitPrice, included },
+        })
+        .select()
+        .single()
+      if (error) {
+        setSaving(false)
+        return alert(error.message)
+      }
+      expenseId = expense.id
+    }
+
+    const rows = Object.entries(shares).map(([profile_id, share_amount]) => ({
+      expense_id: expenseId,
+      profile_id,
+      share_amount,
+    }))
+    const { error: shareError } = await supabase.from('expense_shares').insert(rows)
+    setSaving(false)
+    if (shareError) return alert(shareError.message)
+    onSaved()
+  }
+
   async function handleSave(e) {
     e.preventDefault()
     if (!description.trim() || !paidBy || !totalAmount) return
@@ -57,56 +122,18 @@ export default function ExpenseForm({ group, members, profile, onSaved, onCancel
 
     const result = checkTotals()
     if (!result.ok) {
-      const proceed = confirm(
-        `The shares add up to ₹${result.computedTotal}, but you entered ₹${totalAmount} ` +
-        `(off by ₹${Math.abs(result.diff)}).\n\nSave anyway?`
-      )
-      if (!proceed) return
+      setPendingMismatch(result)
+      return
     }
-
-    setSaving(true)
-    const { data: expense, error } = await supabase
-      .from('expenses')
-      .insert({
-        group_id: group.id,
-        description: description.trim(),
-        category: category.trim() || description.trim(),
-        paid_by: paidBy,
-        total_amount: Number(totalAmount),
-        split_type: splitType,
-        created_by: profile.id,
-        meta: { units, unitPrice, included },
-      })
-      .select()
-      .single()
-
-    if (error) {
-      setSaving(false)
-      return alert(error.message)
-    }
-
-    const rows = Object.entries(shares).map(([profile_id, share_amount]) => ({
-      expense_id: expense.id,
-      profile_id,
-      share_amount,
-    }))
-    const { error: shareError } = await supabase.from('expense_shares').insert(rows)
-    setSaving(false)
-    if (shareError) return alert(shareError.message)
-    onSaved()
+    reallySave()
   }
 
   return (
     <form className="panel stack" onSubmit={handleSave}>
-      <h3>Add expense</h3>
+      <h3>{isEdit ? 'Edit expense' : 'Add expense'}</h3>
 
       <label>What was it?</label>
-      <input
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
-        placeholder="Day 1 breakfast"
-        required
-      />
+      <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Day 1 breakfast" required />
 
       <label>Category <span className="faint">(optional — groups columns in the summary)</span></label>
       <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Food" />
@@ -209,9 +236,19 @@ export default function ExpenseForm({ group, members, profile, onSaved, onCancel
       <div className="row-between mt">
         <button type="button" className="btn-link" onClick={onCancel}>Cancel</button>
         <button type="submit" className="btn-primary" disabled={saving}>
-          {saving ? 'Saving…' : 'Save expense'}
+          {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Save expense'}
         </button>
       </div>
+
+      {pendingMismatch && (
+        <Modal
+          title="Numbers don't quite match"
+          body={`The shares add up to ₹${pendingMismatch.computedTotal}, but you entered ₹${totalAmount} (off by ₹${Math.abs(pendingMismatch.diff)}). Save anyway using the total you entered?`}
+          confirmLabel="Save anyway"
+          onConfirm={() => { setPendingMismatch(null); reallySave() }}
+          onCancel={() => setPendingMismatch(null)}
+        />
+      )}
     </form>
   )
 }

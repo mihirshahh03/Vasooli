@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
+import Modal from './Modal'
 
 export default function Members({ group, members, myId, onChanged }) {
   const [username, setUsername] = useState('')
-  const [status, setStatus] = useState(null) // { type: 'error' | 'ok', text }
+  const [status, setStatus] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [pendingRemove, setPendingRemove] = useState(null)
 
   const myRole = members.find((m) => m.id === myId)?.role
 
@@ -50,17 +52,14 @@ export default function Members({ group, members, myId, onChanged }) {
     onChanged()
   }
 
-  async function removeMember(m) {
-    const isSelf = m.id === myId
-    const label = isSelf ? 'Leave this group?' : `Remove ${m.display_name} from the group?`
-    if (!confirm(label)) return
-
+  async function confirmRemove() {
+    const m = pendingRemove
+    setPendingRemove(null)
     const { error } = await supabase
       .from('group_members')
       .delete()
       .eq('group_id', group.id)
       .eq('profile_id', m.id)
-
     if (error) return setStatus({ type: 'error', text: error.message })
     onChanged()
   }
@@ -77,7 +76,7 @@ export default function Members({ group, members, myId, onChanged }) {
             {(myRole === 'admin' || m.id === myId) && (
               <button
                 className="chip-x"
-                onClick={() => removeMember(m)}
+                onClick={() => setPendingRemove(m)}
                 title={m.id === myId ? 'Leave group' : 'Remove'}
                 type="button"
               >
@@ -103,6 +102,21 @@ export default function Members({ group, members, myId, onChanged }) {
 
       {status && (
         <p className={status.type === 'error' ? 'error' : 'success'}>{status.text}</p>
+      )}
+
+      {pendingRemove && (
+        <Modal
+          title={pendingRemove.id === myId ? 'Leave this group?' : `Remove ${pendingRemove.display_name}?`}
+          body={
+            pendingRemove.id === myId
+              ? "You'll need to be re-added to see this group again."
+              : `${pendingRemove.display_name} will lose access to this group's expenses.`
+          }
+          confirmLabel={pendingRemove.id === myId ? 'Leave' : 'Remove'}
+          danger
+          onConfirm={confirmRemove}
+          onCancel={() => setPendingRemove(null)}
+        />
       )}
     </div>
   )

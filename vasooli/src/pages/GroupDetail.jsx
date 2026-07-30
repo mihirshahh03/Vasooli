@@ -4,21 +4,26 @@ import Members from '../components/Members'
 import ExpenseForm from '../components/ExpenseForm'
 import ExpenseList from '../components/ExpenseList'
 import Tables from '../components/Tables'
+import Activity from '../components/Activity'
+import BottomNav from '../components/BottomNav'
 
 export default function GroupDetail({ group, profile, onBack }) {
   const [members, setMembers] = useState([])
   const [expenses, setExpenses] = useState([])
   const [shares, setShares] = useState([])
+  const [settlements, setSettlements] = useState([])
+  const [activity, setActivity] = useState([])
   const [showForm, setShowForm] = useState(false)
+  const [editingExpense, setEditingExpense] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState('expenses') // 'expenses' | 'summary'
+  const [tab, setTab] = useState('expenses')
 
   async function loadAll() {
     setLoading(true)
 
     const { data: memberRows } = await supabase
       .from('group_members')
-      .select('role, profiles(id, username, display_name)')
+      .select('role, profiles(id, username, display_name, upi_id)')
       .eq('group_id', group.id)
 
     const memberProfiles = (memberRows || [])
@@ -39,41 +44,49 @@ export default function GroupDetail({ group, profile, onBack }) {
       shareRows = data || []
     }
 
+    const { data: settlementRows } = await supabase
+      .from('settlements')
+      .select('*')
+      .eq('group_id', group.id)
+
+    const { data: activityRows } = await supabase
+      .from('activity_log')
+      .select('*')
+      .eq('group_id', group.id)
+      .order('created_at', { ascending: false })
+      .limit(50)
+
     setMembers(memberProfiles)
     setExpenses(expenseRows || [])
     setShares(shareRows)
+    setSettlements(settlementRows || [])
+    setActivity(activityRows || [])
     setLoading(false)
   }
 
   useEffect(() => { loadAll() }, [group.id])
 
+  const myRole = members.find((m) => m.id === profile.id)?.role
+  const sharesForExpense = (expenseId) => shares.filter((s) => s.expense_id === expenseId)
+
   return (
-    <div className="screen">
+    <div className="screen with-bottom-nav">
       <header className="topbar">
         <button className="btn-link" onClick={onBack}>← Groups</button>
-        <span className="hello">{group.name}</span>
+        <span className="hello">{group.emoji} {group.name}</span>
       </header>
 
       <div className="content">
         <Members group={group} members={members} myId={profile.id} onChanged={loadAll} />
 
-        <div className="tab-row">
-          <button className={tab === 'expenses' ? 'active' : ''} onClick={() => setTab('expenses')}>
-            Expenses
-          </button>
-          <button className={tab === 'summary' ? 'active' : ''} onClick={() => setTab('summary')}>
-            Summary
-          </button>
-        </div>
-
         {tab === 'expenses' && (
           <>
-            {!showForm && (
+            {!showForm && !editingExpense && (
               <button className="btn-primary full" onClick={() => setShowForm(true)}>
                 + Add expense
               </button>
             )}
-            {showForm && (
+            {(showForm || editingExpense) && (
               members.length === 0 ? (
                 <p className="hint">Add at least one member before logging expenses.</p>
               ) : (
@@ -81,27 +94,54 @@ export default function GroupDetail({ group, profile, onBack }) {
                   group={group}
                   members={members}
                   profile={profile}
-                  onCancel={() => setShowForm(false)}
-                  onSaved={() => { setShowForm(false); loadAll() }}
+                  existingExpense={editingExpense}
+                  existingShares={editingExpense ? sharesForExpense(editingExpense.id) : null}
+                  onCancel={() => { setShowForm(false); setEditingExpense(null) }}
+                  onSaved={() => { setShowForm(false); setEditingExpense(null); loadAll() }}
                 />
               )
             )}
             {loading ? (
-              <p className="hint">Loading…</p>
+              <div className="stack-list mt">
+                <div className="skeleton-row" />
+                <div className="skeleton-row" />
+              </div>
             ) : (
-              <ExpenseList expenses={expenses} members={members} onChanged={loadAll} />
+              <ExpenseList
+                expenses={expenses}
+                members={members}
+                profile={profile}
+                myRole={myRole}
+                onEdit={(exp) => { setShowForm(false); setEditingExpense(exp) }}
+                onChanged={loadAll}
+              />
             )}
           </>
         )}
 
+        {tab === 'activity' && <Activity items={activity} loading={loading} />}
+
         {tab === 'summary' && (
           loading ? (
-            <p className="hint">Loading…</p>
+            <div className="stack-list mt">
+              <div className="skeleton-row" />
+              <div className="skeleton-row" />
+            </div>
           ) : (
-            <Tables expenses={expenses} shares={shares} profiles={members} />
+            <Tables
+              group={group}
+              expenses={expenses}
+              shares={shares}
+              settlements={settlements}
+              profiles={members}
+              myId={profile.id}
+              onChanged={loadAll}
+            />
           )
         )}
       </div>
+
+      <BottomNav active={tab} onChange={setTab} />
     </div>
   )
 }

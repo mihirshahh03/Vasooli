@@ -95,6 +95,27 @@ export function buildSplitSummary(expenses, shares, profiles) {
 }
 
 /**
+ * Subtract already-recorded settlement payments from net balances before
+ * simplifying debts, so a payment someone already made doesn't keep showing up.
+ * settlements: [{ from_profile_id, to_profile_id, amount }]
+ * netBalances: [{ profileId, name, net }]  (net = paid - owed, before settlements)
+ */
+export function applySettlements(netBalances, settlements) {
+  const adjusted = Object.fromEntries(netBalances.map((p) => [p.profileId, p.net]))
+  settlements.forEach((s) => {
+    // If A paid B, A's effective net goes up (their debt shrinks) and B's goes down
+    // (they've already received it, so they're owed less going forward).
+    if (adjusted[s.from_profile_id] !== undefined) {
+      adjusted[s.from_profile_id] = round2(adjusted[s.from_profile_id] + Number(s.amount))
+    }
+    if (adjusted[s.to_profile_id] !== undefined) {
+      adjusted[s.to_profile_id] = round2(adjusted[s.to_profile_id] - Number(s.amount))
+    }
+  })
+  return netBalances.map((p) => ({ ...p, net: adjusted[p.profileId] }))
+}
+
+/**
  * Table 3: Final Settlement -- minimal list of "who pays whom" transactions,
  * using a greedy match-largest-creditor-with-largest-debtor algorithm (same idea
  * as Splitwise's "simplify debts").
@@ -111,7 +132,13 @@ export function simplifyDebts(netBalances) {
     const creditor = creditors[j]
     const amount = round2(Math.min(debtor.net, creditor.net))
     if (amount > 0) {
-      transactions.push({ from: debtor.name, to: creditor.name, amount })
+      transactions.push({
+        from: debtor.name,
+        to: creditor.name,
+        fromId: debtor.profileId,
+        toId: creditor.profileId,
+        amount,
+      })
     }
     debtor.net = round2(debtor.net - amount)
     creditor.net = round2(creditor.net - amount)
@@ -119,4 +146,17 @@ export function simplifyDebts(netBalances) {
     if (creditor.net <= 0.005) j++
   }
   return transactions
+}
+
+/** Builds a UPI deep link. Opens the person's UPI app (GPay/PhonePe/etc.) with
+ * the amount and payee pre-filled -- we never see or touch the actual payment. */
+export function buildUpiLink({ upiId, payeeName, amount, note }) {
+  const params = new URLSearchParams({
+    pa: upiId,
+    pn: payeeName,
+    am: Number(amount).toFixed(2),
+    cu: 'INR',
+    tn: note || 'Vasooli settle up',
+  })
+  return `upi://pay?${params.toString()}`
 }

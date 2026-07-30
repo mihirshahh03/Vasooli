@@ -1,95 +1,90 @@
 # Vasooli
 
 Group expense splitting for real trips — including the messy splits Splitwise
-handles badly: subgroup-only meals, per-unit consumption (drinks by the bottle),
-and a built-in check that flags when itemised shares don't add up to the total.
-
-Anyone can sign up. You create groups, add friends by username, and each group's
-expenses are visible only to that group's members.
+handles badly: subgroup-only meals, per-unit consumption, and a built-in check
+that flags when itemised shares don't add up to the total. Now also tracks
+who's actually settled up, lets you edit expenses, and has an activity feed.
 
 ---
 
-## 1. Set up the database
+## Updating an existing deployment (you already have this live)
 
-1. In your Supabase project, open **SQL Editor → New query**
-2. Paste the entire contents of `schema.sql` and click **Run**
+**1. Run the migration (does NOT touch existing data)**
 
-Safe to re-run: the script drops and recreates its own tables each time.
+Supabase → SQL Editor → New query → paste all of `migration_v2.sql` → Run.
+This only *adds* things (new columns, new tables, new functions) — it won't
+drop or wipe your existing signups, groups, or expenses.
 
-## 2. Turn off email confirmation (important)
+**2. Allow the password-reset redirect**
 
-People sign in with a username, not an email, so Supabase's confirmation emails
-would go nowhere and block every signup.
+Supabase → Authentication → **URL Configuration** → add your live Vercel URL
+(e.g. `https://vasoolitripsplit.vercel.app`) to **Redirect URLs**. Without
+this, clicking a password-reset email link will fail with an error.
 
-1. Supabase → **Authentication** → **Sign In / Providers** → **Email**
-2. Turn **Confirm email** OFF, and save
+**3. Push the updated code to GitHub** (same as before — drag the folder into
+the same nested path, GitHub will show the changed files in the commit).
+Vercel redeploys automatically.
 
-## 3. Get your keys
-
-Supabase → **Project Settings → API**, copy:
-- **Project URL**
-- **anon public** key
-
-## 4. Deploy on Vercel
-
-1. Vercel → **Add New Project** → import your GitHub repo
-2. Add two **Environment Variables**:
-   - `VITE_SUPABASE_URL` — your Project URL
-   - `VITE_SUPABASE_ANON_KEY` — your anon public key
-3. **Deploy**
-
-You'll get a live URL. Share it with anyone — they sign up themselves.
-
-## 5. Add it to a phone home screen
-
-- **iPhone:** open the URL in Safari → Share → **Add to Home Screen**
-  (iOS never prompts automatically; this manual step is required.)
-- **Android:** Chrome offers an install prompt, or Menu → **Install app**
+That's it — no changes needed to your existing environment variables.
 
 ---
 
-## How it works
+## Brand-new setup (skip if you already have Supabase + Vercel running)
 
-**Groups.** Anyone can create a group. Whoever creates it becomes its admin.
-Any member can add more people by username; admins can remove anyone, and
-everyone can remove themselves (leave).
-
-**Split types.**
-- *Equally* — pick who's included, the total divides between them
-- *Set amounts* — type an exact amount per person for uneven splits
-- *Per unit* — set a price per unit and a count per person (e.g. beer at
-  ₹200 a bottle, one person had 2, another had 5)
-
-**The maths check.** Tap "Check the maths" before saving and it compares the
-sum of the individual shares against the total you typed, showing the gap if
-there is one. It won't block you — it just refuses to let a wrong number pass
-by unnoticed.
-
-**Settle up.** Net balances are reduced to the smallest set of payments that
-clears everyone, so nobody makes six separate transfers.
+Run `schema.sql` first, then `migration_v2.sql` — same SQL Editor, same order.
+Everything else (Vercel import, env vars) is unchanged from before.
 
 ---
 
-## Honest limitations
+## What's new in this version
 
-- **Privacy** is enforced by Postgres row-level security, so it holds even if
-  someone queries the API directly — not just in the UI. Any signed-in user
-  can look up whether a username exists (that's what makes "add by username"
-  work), but they can't see your groups, members or expenses.
-- **Offline:** the app opens and shows the last data it loaded, but adding an
-  expense needs a connection. Full offline entry with sync-on-reconnect isn't
-  built yet.
-- **Supabase free tier** pauses a project after 7 days with no activity.
-  Nothing is lost — click Resume in the dashboard.
-- **No password reset** yet. Forgotten passwords need a manual reset from the
-  Supabase dashboard (Authentication → Users).
-- **No editing an expense** after saving — delete it and re-add. Deliberate
-  for v1 to keep the share recalculation simple and correct.
+**Settling up properly.** "Mark settled" on any row in Settle Up records that
+the payment happened, so it stops showing up in future calculations. Either
+person in that specific transaction can mark it (not just any group member).
 
-## Running it locally (optional)
+**UPI pay links.** If the person you owe has added their UPI ID (Profile
+settings, tap your username top-left), a "Pay via UPI" button appears next to
+their row — opens GPay/PhonePe/etc. pre-filled. This is just a link; the app
+never touches the actual payment, so it can't auto-confirm one went through —
+you still tap "Mark settled" yourself after paying.
 
-```bash
-npm install
-cp .env.example .env   # then paste your keys in
-npm run dev
-```
+**Editing expenses.** Only whoever originally added an expense, or a group
+admin, can edit it (anyone in the group can still delete any expense, same as
+before — deliberately not tightened further, so mistakes are always fixable
+by the group).
+
+**Self-service password reset.** Optional email field at signup (or add one
+later via Profile settings). If set, "Forgot password?" on the login screen
+actually works. No email on file → the message says so, and an admin/friend
+resets it for them manually via the Supabase dashboard instead.
+
+**Activity feed.** A running log of who added what and who paid whom, per
+group — auto-generated by the database itself, nothing for the app to
+maintain.
+
+**Archiving groups.** Old trips can be archived to declutter your groups list
+without deleting their data — toggle "Show archived groups" to bring them back.
+
+**UI overhaul.** Replaced every native browser alert/confirm popup with
+in-app modals matching the rest of the design. Added a bottom tab bar
+(Expenses / Activity / Summary), skeleton loading states, swipe-to-delete on
+expense rows, and an emoji per group.
+
+## Deliberately not included this round
+
+**Receipt photos** — needs a Supabase Storage bucket (a new moving part:
+upload UI, storage policies, file size limits) on top of everything else
+here. Worth doing as its own focused pass once this batch is stable and
+tested, rather than piling it into the same risky deploy.
+
+## Honest limitations, still true
+
+- Any group member can currently rewrite the *shares* of an expense they
+  don't own by calling the API directly (not through the UI, which does
+  respect the creator/admin rule) — acceptable for a trusted friend group,
+  not something to rely on for strangers.
+- Supabase's free-tier reset/auth emails are rate-limited on the shared
+  sender — fine for a small group, would need a real email provider at
+  meaningfully larger scale.
+- Offline is still shell-only (opens with no signal, doesn't sync new data
+  added offline) — unchanged from before.

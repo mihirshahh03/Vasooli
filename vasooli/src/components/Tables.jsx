@@ -1,4 +1,7 @@
-import { buildPaymentSummary, buildSplitSummary, simplifyDebts } from '../utils/calculations'
+import { useState } from 'react'
+import { supabase } from '../supabaseClient'
+import { buildPaymentSummary, buildSplitSummary, applySettlements, simplifyDebts, buildUpiLink } from '../utils/calculations'
+import Modal from './Modal'
 
 const fmt = (n) => `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 
@@ -6,16 +9,40 @@ function toCsv(rows) {
   return rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
 }
 
-export default function Tables({ expenses, shares, profiles }) {
+export default function Tables({ group, expenses, shares, settlements, profiles, myId, onChanged }) {
+  const [pendingSettle, setPendingSettle] = useState(null)
+  const [saving, setSaving] = useState(false)
+
   if (expenses.length === 0) {
     return <p className="hint">No expenses yet — the summary appears once you've logged something.</p>
   }
 
   const payment = buildPaymentSummary(expenses, profiles)
   const split = buildSplitSummary(expenses, shares, profiles)
-  const settlements = simplifyDebts(
-    split.rows.map((r) => ({ profileId: r.profileId, name: r.name, net: r.net }))
-  )
+  const rawNet = split.rows.map((r) => ({ profileId: r.profileId, name: r.name, net: r.net }))
+  const nettedBalances = applySettlements(rawNet, settlements)
+  const settlementsToMake = simplifyDebts(nettedBalances)
+
+  function profileById(id) {
+    return profiles.find((p) => p.id === id)
+  }
+
+  async function confirmSettle() {
+    const t = pendingSettle
+    setPendingSettle(null)
+
+    setSaving(true)
+    const { error } = await supabase.from('settlements').insert({
+      group_id: group.id,
+      from_profile_id: t.fromId,
+      to_profile_id: t.toId,
+      amount: t.amount,
+      created_by: myId,
+    })
+    setSaving(false)
+    if (error) return alert(error.message)
+    onChanged()
+  }
 
   function download() {
     const rows = []
@@ -24,12 +51,12 @@ export default function Tables({ expenses, shares, profiles }) {
     payment.rows.forEach((r) => rows.push([r.name, ...payment.categories.map((c) => r.byCategory[c]), r.total]))
     rows.push([])
     rows.push(['Expense split summary'])
-    rows.push(['Name', ...split.categories, 'Total owed', 'Total paid', 'Net'])
+    rows.push(['Name', ...split.categories, 'Total owed', 'Total paid', 'Net (before settlements)'])
     split.rows.forEach((r) => rows.push([r.name, ...split.categories.map((c) => r.byCategory[c]), r.totalOwed, r.totalPaid, r.net]))
     rows.push([])
-    rows.push(['Final settlement'])
+    rows.push(['Settle up (after recorded settlements)'])
     rows.push(['From', 'To', 'Amount'])
-    settlements.forEach((t) => rows.push([t.from, t.to, t.amount]))
+    settlementsToMake.forEach((t) => rows.push([t.from, t.to, t.amount]))
 
     const blob = new Blob([toCsv(rows)], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -98,27 +125,45 @@ export default function Tables({ expenses, shares, profiles }) {
 
       <section>
         <h3>Settle up</h3>
-        {settlements.length === 0 ? (
+        {settlementsToMake.length === 0 ? (
           <p className="hint">Everyone's square.</p>
         ) : (
-          <table>
-            <thead>
-              <tr><th>From</th><th>To</th><th>Amount</th></tr>
-            </thead>
-            <tbody>
-              {settlements.map((t, i) => (
-                <tr key={i}>
-                  <td>{t.from}</td>
-                  <td>{t.to}</td>
-                  <td className="bold">{fmt(t.amount)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="stack-list">
+            {settlementsToMake.map((t, i) => {
+              const toProfile = profileById(t.toId)
+              const upiLink = toProfile?.upi_id
+                ? buildUpiLink({ upiId: toProfile.upi_id, payeeName: toProfile.display_name, amount: t.amount, note: group.name })
+                : null
+              return (
+                <div key={i} className="settle-row">
+                  <div>
+                    <strong>{t.from}</strong> → <strong>{t.to}</strong>
+                    <div className="expense-meta">{fmt(t.amount)}</div>
+                  </div>
+                  <div className="settle-actions">
+                    {upiLink && <a className="btn-secondary" href={upiLink}>Pay via UPI</a>}
+                    <button className="btn-primary" onClick={() => setPendingSettle(t)} disabled={saving}>
+                      Mark settled
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         )}
       </section>
 
       <button className="btn-secondary" onClick={download}>Download as CSV</button>
+
+      {pendingSettle && (
+        <Modal
+          title="Mark as settled?"
+          body={`Record that ${pendingSettle.from} paid ${pendingSettle.to} ${fmt(pendingSettle.amount)}. This removes it from the Settle Up list.`}
+          confirmLabel="Mark settled"
+          onConfirm={confirmSettle}
+          onCancel={() => setPendingSettle(null)}
+        />
+      )}
     </div>
   )
 }
