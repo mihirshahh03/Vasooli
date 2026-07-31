@@ -12,8 +12,12 @@ export default function Join({ inviteCode, onJoined, onCancel }) {
     supabase
       .rpc('peek_invite', { p_invite_code: inviteCode })
       .then(({ data, error }) => {
-        if (error) setError(error.message)
-        else setInvite(data)
+        if (error) {
+          setError(error.message)
+          setInvite({ found: false, rpcFailed: true })
+        } else {
+          setInvite(data)
+        }
         setLoading(false)
       })
   }, [inviteCode])
@@ -53,8 +57,12 @@ export default function Join({ inviteCode, onJoined, onCancel }) {
       <div className="screen center">
         <div className="card">
           <h1 className="brand">Vasooli</h1>
-          <p className="subtitle">This invite link isn't valid.</p>
-          <p className="hint">It may have been rotated or the group deleted. Ask whoever sent it for a fresh link.</p>
+          <p className="subtitle">{invite?.rpcFailed ? 'Something went wrong.' : "This invite link isn't valid."}</p>
+          <p className="hint">
+            {invite?.rpcFailed
+              ? error || 'Please try again in a moment.'
+              : "It may have been rotated or the group deleted. Ask whoever sent it for a fresh link."}
+          </p>
           <button className="btn-primary full mt" onClick={onCancel}>Go to my groups</button>
         </div>
       </div>

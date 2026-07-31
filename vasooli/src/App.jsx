@@ -9,7 +9,8 @@ import Join from './pages/Join'
 
 function readInviteCode() {
   const params = new URLSearchParams(window.location.search)
-  return params.get('join')
+  const code = params.get('join')
+  return code && code !== 'undefined' && code !== 'null' ? code : null
 }
 
 function clearInviteFromUrl() {
