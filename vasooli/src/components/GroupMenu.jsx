@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { MoreVertical, Archive, Trash2 } from 'lucide-react'
+import { MoreVertical, Archive, Trash2, UserPlus } from 'lucide-react'
 import { supabase } from '../supabaseClient'
+import InviteDialog from './InviteDialog'
 
-export default function GroupMenu({ group, isAdmin, onArchiveToggled, onDeleted }) {
+export default function GroupMenu({ group, isAdmin, onArchiveToggled, onDeleted, onUpdated }) {
   const [open, setOpen] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [showInvite, setShowInvite] = useState(false)
   const [typedName, setTypedName] = useState('')
   const [busy, setBusy] = useState(false)
   const ref = useRef(null)
@@ -40,6 +42,9 @@ export default function GroupMenu({ group, isAdmin, onArchiveToggled, onDeleted 
       <button className="icon-btn" onClick={() => setOpen((s) => !s)}><MoreVertical size={20} /></button>
       {open && (
         <div className="dropdown-menu">
+          <button onClick={() => { setOpen(false); setShowInvite(true) }}>
+            <UserPlus size={16} /> Invite people
+          </button>
           <button onClick={toggleArchive}>
             <Archive size={16} /> {group.archived_at ? 'Unarchive' : 'Archive'} group
           </button>
@@ -49,6 +54,14 @@ export default function GroupMenu({ group, isAdmin, onArchiveToggled, onDeleted 
             </button>
           )}
         </div>
+      )}
+
+      {showInvite && (
+        <InviteDialog
+          group={group}
+          onClose={() => setShowInvite(false)}
+          onUpdated={onUpdated}
+        />
       )}
 
       {confirmingDelete && (

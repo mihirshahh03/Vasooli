@@ -3,8 +3,8 @@ import { supabase, usernameToEmail, USERNAME_RULE } from '../supabaseClient'
 
 const EMAIL_RULE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-export default function Auth() {
-  const [mode, setMode] = useState('login') // 'login' | 'signup' | 'forgot'
+export default function Auth({ joinPending }) {
+  const [mode, setMode] = useState(joinPending ? 'signup' : 'login') // 'login' | 'signup' | 'forgot'
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
@@ -129,6 +129,12 @@ export default function Auth() {
       <div className="card">
         <h1 className="brand">Vasooli</h1>
         <p className="subtitle">Settle up without the spreadsheet.</p>
+
+        {joinPending && (
+          <p className="invite-banner">
+            You've been invited to a group — sign up or log in, and you'll be taken straight there.
+          </p>
+        )}
 
         {mode !== 'forgot' && (
           <div className="tab-row">

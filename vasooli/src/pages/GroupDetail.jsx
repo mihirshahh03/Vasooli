@@ -96,6 +96,7 @@ export default function GroupDetail({ group, profile, onBack, onDeleted }) {
           isAdmin={myRole === 'admin'}
           onArchiveToggled={loadAll}
           onDeleted={onDeleted}
+          onUpdated={loadAll}
         />
       </header>
 

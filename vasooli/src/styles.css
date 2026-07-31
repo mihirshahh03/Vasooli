@@ -606,3 +606,83 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   color: var(--ink);
   font-size: 14px;
 }
+
+/* ============================================================
+   v4 — invite links, notices, notification toggle
+   ============================================================ */
+
+.invite-banner {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+
+.notice-banner {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  cursor: pointer;
+}
+
+.invite-group-name { font-size: 17px; color: var(--ink); }
+
+.invite-link-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-soft);
+  border-radius: var(--radius-sm);
+  padding: 10px 10px 10px 14px;
+  margin-bottom: 12px;
+}
+.invite-link-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invite-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.invite-actions .btn-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.invite-pin-section {
+  border-top: 1px solid var(--border);
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
+.pin-input {
+  text-align: center;
+  letter-spacing: 8px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+/* Buttons that carry an icon alongside their label */
+.btn-primary, .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}

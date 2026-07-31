@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient'
 
 const EMOJI_CHOICES = ['🧾', '🏖️', '🏔️', '🎉', '🍷', '🏕️', '🚗', '🏠', '✈️', '🍔']
 
-export default function Groups({ profile, onOpenGroup, onOpenProfile }) {
+export default function Groups({ profile, onOpenGroup, onOpenProfile, notice, onDismissNotice }) {
   const [groups, setGroups] = useState([])
   const [newName, setNewName] = useState('')
   const [newEmoji, setNewEmoji] = useState(EMOJI_CHOICES[0])
@@ -79,6 +79,12 @@ export default function Groups({ profile, onOpenGroup, onOpenProfile }) {
       </header>
 
       <div className="content">
+        {notice && (
+          <div className="notice-banner" onClick={onDismissNotice}>
+            {notice}
+          </div>
+        )}
+
         <h2>Your groups</h2>
 
         <form onSubmit={createGroup} className="create-group-form">

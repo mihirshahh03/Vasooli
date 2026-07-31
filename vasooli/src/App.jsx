@@ -5,6 +5,16 @@ import ResetPassword from './pages/ResetPassword'
 import Groups from './pages/Groups'
 import GroupDetail from './pages/GroupDetail'
 import Profile from './pages/Profile'
+import Join from './pages/Join'
+
+function readInviteCode() {
+  const params = new URLSearchParams(window.location.search)
+  return params.get('join')
+}
+
+function clearInviteFromUrl() {
+  window.history.replaceState({}, '', window.location.pathname)
+}
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -13,6 +23,8 @@ export default function App() {
   const [showProfile, setShowProfile] = useState(false)
   const [loading, setLoading] = useState(true)
   const [recovering, setRecovering] = useState(false)
+  const [inviteCode, setInviteCode] = useState(readInviteCode())
+  const [joinedNotice, setJoinedNotice] = useState('')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -61,11 +73,34 @@ export default function App() {
     await supabase.auth.signOut()
   }
 
+  function finishJoin(groupName, alreadyMember) {
+    setInviteCode(null)
+    clearInviteFromUrl()
+    setJoinedNotice(
+      alreadyMember ? `You're already in ${groupName}.` : `Joined ${groupName}.`
+    )
+  }
+
+  function cancelJoin() {
+    setInviteCode(null)
+    clearInviteFromUrl()
+  }
+
   if (recovering) {
     return <ResetPassword onDone={() => setRecovering(false)} />
   }
+
   if (loading) return <div className="screen center"><p className="hint">Loading…</p></div>
-  if (!session || !profile) return <Auth />
+
+  // Someone opened an invite link but isn't signed in yet -- they need an
+  // account first, then we drop them straight back into the join flow.
+  if (!session || !profile) {
+    return <Auth joinPending={!!inviteCode} />
+  }
+
+  if (inviteCode) {
+    return <Join inviteCode={inviteCode} onJoined={finishJoin} onCancel={cancelJoin} />
+  }
 
   if (showProfile) {
     return (
@@ -94,6 +129,8 @@ export default function App() {
       profile={profile}
       onOpenGroup={setOpenGroup}
       onOpenProfile={() => setShowProfile(true)}
+      notice={joinedNotice}
+      onDismissNotice={() => setJoinedNotice('')}
     />
   )
 }

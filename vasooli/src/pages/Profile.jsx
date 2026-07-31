@@ -1,8 +1,40 @@
-import { useState } from 'react'
-import { ArrowLeft, LogOut } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ArrowLeft, LogOut, Bell, BellOff } from 'lucide-react'
 import { supabase, USERNAME_RULE } from '../supabaseClient'
+import {
+  subscribeToPush,
+  unsubscribeFromPush,
+  getExistingSubscription,
+  pushBlockedReason,
+} from '../utils/push'
 
 export default function Profile({ profile, onBack, onLogout, onProfileUpdated }) {
+  const [pushOn, setPushOn] = useState(false)
+  const [pushBusy, setPushBusy] = useState(false)
+  const [pushError, setPushError] = useState('')
+  const blockedReason = pushBlockedReason()
+
+  useEffect(() => {
+    getExistingSubscription().then((sub) => setPushOn(!!sub))
+  }, [])
+
+  async function togglePush() {
+    setPushBusy(true)
+    setPushError('')
+    try {
+      if (pushOn) {
+        await unsubscribeFromPush()
+        setPushOn(false)
+      } else {
+        await subscribeToPush(profile.id)
+        setPushOn(true)
+      }
+    } catch (err) {
+      setPushError(err.message)
+    }
+    setPushBusy(false)
+  }
+
   const [displayName, setDisplayName] = useState(profile.display_name || '')
   const [username, setUsername] = useState(profile.username || '')
   const [upiId, setUpiId] = useState(profile.upi_id || '')
@@ -99,6 +131,32 @@ export default function Profile({ profile, onBack, onLogout, onProfileUpdated })
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
           <button type="submit" className="btn-secondary" disabled={busy}>Update email</button>
         </form>
+
+        <div className="stack section-block">
+          <h3>Notifications</h3>
+          {blockedReason ? (
+            <p className="hint">{blockedReason}</p>
+          ) : (
+            <>
+              <p className="hint">
+                Get a notification when someone adds an expense to one of your groups.
+              </p>
+              <button
+                type="button"
+                className={pushOn ? 'btn-secondary' : 'btn-primary'}
+                onClick={togglePush}
+                disabled={pushBusy}
+              >
+                {pushBusy ? 'Just a sec…' : pushOn ? (
+                  <><BellOff size={15} /> Turn off notifications</>
+                ) : (
+                  <><Bell size={15} /> Turn on notifications</>
+                )}
+              </button>
+            </>
+          )}
+          {pushError && <p className="error">{pushError}</p>}
+        </div>
 
         <form onSubmit={savePassword} className="stack section-block">
           <h3>Change password</h3>

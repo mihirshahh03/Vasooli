@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vasooli-shell-v1';
+const CACHE_NAME = 'vasooli-shell-v2';
 const SHELL_URLS = ['/', '/index.html', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -34,6 +34,40 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(() => cached);
       return cached || network;
+    })
+  );
+});
+
+// ---- Push notifications ----
+self.addEventListener('push', (event) => {
+  let payload = { title: 'Vasooli', body: 'Something happened in one of your groups.' };
+  try {
+    if (event.data) payload = { ...payload, ...event.data.json() };
+  } catch (e) {
+    // Malformed payload -- fall back to the generic message above.
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      data: { url: payload.url || '/' },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = event.notification.data?.url || '/';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Focus an already-open tab if there is one, rather than opening a duplicate.
+      for (const client of clientList) {
+        if ('focus' in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(target);
     })
   );
 });

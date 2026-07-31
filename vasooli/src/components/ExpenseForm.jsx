@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { computeEqualShares, computePerUnitShares, auditShares } from '../utils/calculations'
 import { CURRENCIES, convertToINR } from '../utils/currency'
+import { notifyGroup } from '../utils/push'
 import Modal from './Modal'
 
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100
@@ -121,6 +122,17 @@ export default function ExpenseForm({ group, members, profile, existingExpense, 
     const { error: shareError } = await supabase.from('expense_shares').insert(rows)
     setSaving(false)
     if (shareError) return alert(shareError.message)
+
+    // Only announce brand-new expenses -- editing shouldn't ping everyone again.
+    if (!isEdit) {
+      notifyGroup({
+        groupId: group.id,
+        actorId: profile.id,
+        title: group.name,
+        body: `${profile.display_name} added "${description.trim()}" — ${fmtInr(inrTotal)}`,
+      })
+    }
+
     onSaved()
   }
 
