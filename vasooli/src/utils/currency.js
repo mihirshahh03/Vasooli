@@ -14,10 +14,10 @@ export const CURRENCIES = [
 export async function convertToINR(amount, fromCurrency) {
   if (fromCurrency === 'INR') return { inrAmount: Number(amount), rate: 1 }
 
-  const res = await fetch(`https://api.frankfurter.dev/v2/rates?base=${fromCurrency}&quotes=INR`)
-  if (!res.ok) throw new Error('Could not fetch exchange rate right now.')
+  const res = await fetch(`https://api.frankfurter.dev/v2/rate/${fromCurrency}/INR`)
+  if (!res.ok) throw new Error(`No rate available for ${fromCurrency}.`)
   const data = await res.json()
-  const rate = data.rates?.INR
+  const rate = data.rate
   if (!rate) throw new Error(`No rate available for ${fromCurrency}.`)
   return { inrAmount: Math.round(Number(amount) * rate * 100) / 100, rate }
 }
