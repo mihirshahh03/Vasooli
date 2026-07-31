@@ -4,6 +4,19 @@
 -- Run once: Supabase -> SQL Editor -> New query -> paste -> Run
 -- ============================================================
 
+-- Force pgcrypto (needed to hash the invite PIN) into the public schema,
+-- regardless of which schema it currently lives in -- Supabase sometimes
+-- installs it under "extensions" instead of "public", which breaks
+-- functions that call gen_salt()/crypt() without knowing that.
+do $$
+begin
+  if exists (select 1 from pg_extension where extname = 'pgcrypto') then
+    alter extension pgcrypto set schema public;
+  else
+    create extension pgcrypto with schema public;
+  end if;
+end $$;
+
 -- ---- groups: invite link + optional PIN gate ----
 alter table groups add column if not exists invite_code text unique;
 alter table groups add column if not exists invite_pin_hash text;
