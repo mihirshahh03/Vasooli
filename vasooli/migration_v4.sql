@@ -32,7 +32,7 @@ create or replace function public.set_group_invite(p_group_id uuid, p_pin text, 
 returns jsonb
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_code text;
@@ -64,7 +64,7 @@ create or replace function public.join_group_with_code(p_invite_code text, p_pin
 returns jsonb
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_group groups%rowtype;
@@ -151,6 +151,7 @@ create index if not exists push_subs_by_profile on push_subscriptions (profile_i
 
 alter table push_subscriptions enable row level security;
 
+drop policy if exists "manage own push subscriptions" on push_subscriptions;
 create policy "manage own push subscriptions"
   on push_subscriptions for all to authenticated
   using (profile_id = auth.uid())
